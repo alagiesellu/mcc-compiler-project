@@ -1,0 +1,814 @@
+/**
+  * mc is a small subset of c
+  * the grammar of mc is defined as follows:
+  */
+
+PARSER_BEGIN(NakedParser)
+package utg.mcc.parser;
+import utg.mcc.parser.ast.ASTNode;
+import utg.mcc.parser.ast.ASTAdd;
+import utg.mcc.parser.ast.ASTNot;
+import utg.mcc.parser.ast.ASTAnd;
+import utg.mcc.parser.ast.ASTOr;
+import utg.mcc.parser.ast.ASTBlockStatement;
+import utg.mcc.parser.ast.ASTBreakStatement;
+import utg.mcc.parser.ast.ASTCall;
+import utg.mcc.parser.ast.ASTContinueStatement;
+import utg.mcc.parser.ast.ASTDeclaration;
+import utg.mcc.parser.ast.ASTDiv;
+import utg.mcc.parser.ast.ASTEq;
+import utg.mcc.parser.ast.ASTExpression;
+import utg.mcc.parser.ast.ASTExpressionStatement;
+import utg.mcc.parser.ast.ASTFunDeclaration;
+import utg.mcc.parser.ast.ASTForStatement;
+import utg.mcc.parser.ast.ASTGe;
+import utg.mcc.parser.ast.ASTGt;
+import utg.mcc.parser.ast.ASTIfStatement;
+import utg.mcc.parser.ast.ASTIntegerConstant;
+import utg.mcc.parser.ast.ASTLe;
+import utg.mcc.parser.ast.ASTLt;
+import utg.mcc.parser.ast.ASTMul;
+import utg.mcc.parser.ast.ASTNe;
+import utg.mcc.parser.ast.ASTNeg;
+import utg.mcc.parser.ast.ASTParDeclaration;
+import utg.mcc.parser.ast.ASTPrintStatement;
+import utg.mcc.parser.ast.ASTProgram;
+import utg.mcc.parser.ast.ASTReturnStatement;
+import utg.mcc.parser.ast.ASTStatement;
+import utg.mcc.parser.ast.ASTSub;
+import utg.mcc.parser.ast.ASTVarDeclaration;
+import utg.mcc.parser.ast.ASTVariable;
+import utg.mcc.parser.ast.ASTWhileStatement;
+import utg.utils.Message;
+
+public class NakedParser
+{
+  private static Message m = new Message("parser");
+}
+
+PARSER_END(NakedParser)
+
+/* WHITE SPACE */
+
+SKIP :
+{
+  " "
+| "\t"
+| "\n"
+| "\r"
+| "\f"
+}
+
+/* COMMENTS */
+
+SKIP :
+{
+  "//" : IN_SINGLE_LINE_COMMENT
+| 
+  "/*" : IN_MULTI_LINE_COMMENT
+}
+
+< IN_SINGLE_LINE_COMMENT >
+SKIP :
+{
+  < "\n"
+  | "\r"
+  | "\r\n" > : DEFAULT
+}
+
+< IN_MULTI_LINE_COMMENT >
+SKIP :
+{
+  < "*/" > : DEFAULT
+}
+
+< IN_SINGLE_LINE_COMMENT, IN_MULTI_LINE_COMMENT >
+SKIP :
+{
+  < ~[ ] >
+}
+
+/* RESERVED WORDS AND LITERALS */
+
+TOKEN :
+{
+  < ELSE : "else" >
+| < IF : "if" >
+| < INT : "int" >
+| < WHILE : "while" >
+| < FOR : "for" >
+| < RETURN : "return" >
+| < PRINT : "print" >
+| < BREAK : "break" >
+| < CONTINUE : "continue" >
+}
+
+/* LITERALS */
+
+TOKEN :
+{
+  < INTEGER : [ "0"-"9" ] ([ "0"-"9" ])* >
+}
+
+TOKEN :
+{
+  < LP : "(" >
+| < RP : ")" >
+| < LB : "{" >
+| < RB : "}" >
+| < SE : ";" >
+| < CO : "," >
+}
+
+/* OPERATORS */
+
+TOKEN :
+{
+  < SET : "=" >
+| < GT : ">" >
+| < LT : "<" >
+| < EQ : "==" >
+| < LE : "<=" >
+| < GE : ">=" >
+| < NE : "!=" >
+| < ADD : "+" >
+| < SUB : "-" >
+| < MUL : "*" >
+| < DIV : "/" >
+| < OR : "||" >
+| < AND : "&&" >
+| < NOT : "!" >
+}
+
+/* IDENTIFIERS */
+
+TOKEN :
+{
+  < IDENTIFIER :
+    < LETTER >
+    (
+      < LETTER >
+    | < DIGIT >
+    )* >
+| 
+  < #LETTER : [ "a"-"z", "A"-"Z", "_" ] >
+| 
+  < #DIGIT : [ "0"-"9" ] >
+}
+
+ASTProgram program() :
+{
+  ASTProgram p = new ASTProgram();
+  ASTDeclaration d = null;
+  ASTStatement s = null;
+}
+{
+  {
+    m.verbose("> program");
+    m.i();
+  }
+  (
+    LOOKAHEAD(3)
+    d = variableDeclaration()
+    {
+      p.addDeclaration(d);
+    }
+  )*
+  (
+    LOOKAHEAD(3)
+    d = functionDeclaration()
+    {
+      p.addDeclaration(d);
+    }
+  )*
+  (
+    s = statement()
+    {
+      p.addStatement(s);
+    }
+  )*
+  < EOF >
+  {
+    m.d();
+    m.verbose("< program");
+    return p;
+  }
+}
+
+ASTVarDeclaration variableDeclaration() :
+{
+  Token t = null;
+}
+{
+  {
+    m.verbose("> variable declaration");
+    m.i();
+  }
+  < INT > t = < IDENTIFIER > < SE >
+  {
+    m.d();
+    m.verbose("< variable declaration");
+    return new ASTVarDeclaration(t.image, "int");
+  }
+}
+
+ASTDeclaration functionDeclaration() :
+{
+  Token t = null;
+  ASTFunDeclaration d = null;
+  ASTBlockStatement b = null;
+}
+{
+  {
+    m.verbose("> function declaration");
+    m.i();
+  }
+  < INT > t = < IDENTIFIER >
+  {
+    d = new ASTFunDeclaration(t.image, "int");
+  }
+  < LP > parameterDeclarations(d) < RP > b = blockStatement()
+  {
+    d.block = b;
+    m.d();
+    m.verbose("< function declaration");
+    return d;
+  }
+}
+
+void parameterDeclarations(ASTFunDeclaration d) :
+{
+  ASTParDeclaration p = null;
+  Token t = null;
+}
+{
+  {
+    m.verbose("> parameter declaration");
+    m.i();
+  }
+  (
+    < INT > t = < IDENTIFIER >
+    {
+      p = new ASTParDeclaration(t.image, "int");
+      d.addDeclaration(p);
+    }
+    (
+      < CO > < INT > t = < IDENTIFIER >
+      {
+        p = new ASTParDeclaration(t.image, "int");
+        d.addDeclaration(p);
+      }
+    )*
+  )?
+  {
+    m.d();
+    m.verbose("< parameter declaration");
+  }
+}
+
+ASTStatement statement() :
+{
+  ASTStatement s = null;
+}
+{
+  {
+    m.verbose("> statement");
+    m.i();
+  }
+  (
+    {
+      m.verbose("> while statement");
+      m.i();
+    }
+    s = whileStatement()
+    {
+      m.d();
+      m.verbose("< while statement");
+    }
+  |
+    {
+      m.verbose("> for statement");
+      m.i();
+    }
+    s = forStatement()
+    {
+      m.d();
+      m.verbose("< for statement");
+    }
+  |
+    {
+      m.verbose("> if statement");
+      m.i();
+    }
+    s = ifStatement()
+    {
+      m.d();
+      m.verbose("< if statement");
+    }
+  |
+    {
+      m.verbose("> block statement");
+      m.i();
+    }
+    s = blockStatement()
+    {
+      m.d();
+      m.verbose("< block statement");
+    }
+  |
+    {
+      m.verbose("> return statement");
+      m.i();
+    }
+    s = returnStatement()
+    {
+      m.d();
+      m.verbose("< return statement");
+    }
+  |
+    {
+      m.verbose("> print statement");
+      m.i();
+    }
+    s = printStatement()
+    {
+      m.d();
+      m.verbose("< print statement");
+    }
+  |
+    {
+      m.verbose("> expression statement");
+      m.i();
+      ASTExpressionStatement es = null;
+    }
+    es = expressionStatement() < SE >
+    {
+      es.setFlag(true);
+      s = es;
+      m.d();
+      m.verbose("< expression statement");
+    }
+  |
+    {
+      m.verbose("> break statement");
+      m.i();
+    }
+    s = breakStatement()
+    {
+      m.d();
+      m.verbose("< break statement");
+    }
+  |
+    {
+      m.verbose("> continue statement");
+      m.i();
+    }
+    s = continueStatement()
+    {
+      m.d();
+      m.verbose("< continue statement");
+    }
+  )
+  {
+    m.d();
+    m.verbose("< statement");
+    return s;
+  }
+}
+
+ASTForStatement forStatement() :
+{
+  ASTExpressionStatement s1 = null;
+  ASTExpression s2 = null;
+  ASTExpressionStatement s3 = null;
+  ASTStatement s = null;
+}
+{
+  < FOR > < LP > s1 = expressionStatement() < SE > s2 = orExpression() < SE > s3 = expressionStatement() < RP > 
+  s = statement()
+  {
+    return new ASTForStatement(s1, s2, s3, s);
+  }
+}
+
+ASTWhileStatement whileStatement() :
+{
+  ASTExpression e = null;
+  ASTStatement s = null;
+}
+{
+  < WHILE > < LP > e = orExpression() < RP > 
+  s = statement()
+  {
+    return new ASTWhileStatement(e, s);
+  }
+}
+
+ASTExpressionStatement expressionStatement() :
+{
+  ASTExpressionStatement s = null;
+  ASTExpressionStatement es = null;
+  ASTExpression e = null;
+  Token t = null;
+  Token u = null;
+}
+{
+  (
+    LOOKAHEAD(2)
+    t = < IDENTIFIER > u = < SET > es = expressionStatement()
+    {
+      ASTVariable v = new ASTVariable(t.image);
+      v.setPosition(t);
+      s = new ASTExpressionStatement(v, es);
+      s.setPosition(u);
+      return s;
+    }
+  | 
+    e = orExpression()
+    {
+      s = new ASTExpressionStatement(e);
+      return s;
+    }
+  )
+}
+
+ASTIfStatement ifStatement() :
+{
+  ASTExpression e = null;
+  ASTStatement st = null;
+  ASTStatement se = null;
+}
+{
+  < IF > < LP > e = orExpression() < RP > 
+  st = statement()
+  (
+    < ELSE > se = statement()
+    {
+      return new ASTIfStatement(e, st, se);
+    }
+  )?
+  {
+    return new ASTIfStatement(e, st);
+  }
+}
+
+ASTBlockStatement blockStatement() :
+{
+  ASTBlockStatement b = new ASTBlockStatement();
+  ASTVarDeclaration v = null;
+  ASTStatement s = null;
+  Token t;
+}
+{
+  {
+    m.verbose("> block");
+    m.i();
+  }
+  t = < LB >
+  (
+    v = variableDeclaration()
+    {
+      b.addDeclaration(v);
+    }
+  )*
+  (
+    s = statement()
+    {
+      b.addStatement(s);
+    }
+  )*
+  < RB >
+  {
+    b.setPosition(t);
+    m.d();
+    m.verbose("< block");
+    return b;
+  }
+}
+
+ASTReturnStatement returnStatement() :
+{
+  ASTReturnStatement s = null;
+  ASTExpressionStatement es = null;
+  Token t = null;
+}
+{
+  t = < RETURN > es = expressionStatement() < SE >
+  {
+    s = new ASTReturnStatement(es);
+    s.setPosition(t);
+    return s;
+  }
+}
+
+ASTPrintStatement printStatement() :
+{
+  ASTPrintStatement s = null;
+  ASTExpressionStatement es = null;
+  Token t = null;
+}
+{
+  t = < PRINT > < LP > es = expressionStatement() < RP > < SE >
+  {
+    s = new ASTPrintStatement(es);
+    s.setPosition(t);
+    return s;
+  }
+}
+
+ASTExpression orExpression() :
+{
+  ASTExpression result = null;
+  ASTExpression e = null;
+  Token t;
+}
+{
+  {
+    m.verbose("> or expression");
+    m.i();
+  }
+  result = andExpression()
+  (
+    t = < OR > e = andExpression()
+    {
+      result = new ASTOr(result, e);
+      result.setPosition(t);
+    }
+  )*
+  {
+    m.d();
+    m.verbose("< or expression");
+    return result;
+  }
+}
+
+ASTExpression andExpression() :
+{
+  ASTExpression result = null;
+  ASTExpression e = null;
+  Token t;
+}
+{
+  {
+    m.verbose("> and expression");
+    m.i();
+  }
+  result = relExpression()
+  (
+    t = < AND > e = relExpression()
+    {
+      result = new ASTAnd(result, e);
+      result.setPosition(t);
+    }
+  )*
+  {
+    m.d();
+    m.verbose("< and expression");
+    return result;
+  }
+}
+
+ASTExpression relExpression() :
+{
+  ASTExpression result = null;
+  ASTExpression e = null;
+  Token t = null;
+}
+{
+  {
+    m.verbose("> relation expression");
+    m.i();
+  }
+  result = addExpression()
+  (
+    t = < GT > e = addExpression()
+    {
+      result = new ASTGt(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < GE > e = addExpression()
+    {
+      result = new ASTGe(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < EQ > e = addExpression()
+    {
+      result = new ASTEq(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < NE > e = addExpression()
+    {
+      result = new ASTNe(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < LT > e = addExpression()
+    {
+      result = new ASTLt(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < LE > e = addExpression()
+    {
+      result = new ASTLe(result, e);
+      result.setPosition(t);
+    }
+  )?
+  {
+    m.d();
+    m.verbose("< relation expression");
+    return result;
+  }
+}
+
+ASTExpression addExpression() :
+{
+  ASTExpression result = null;
+  ASTExpression e = null;
+  Token t;
+}
+{
+  {
+    m.verbose("> add expression");
+    m.i();
+  }
+  result = mulExpression()
+  (
+    t = < ADD > e = mulExpression()
+    {
+      result = new ASTAdd(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < SUB > e = mulExpression()
+    {
+      result = new ASTSub(result, e);
+      result.setPosition(t);
+    }
+  )*
+  {
+    m.d();
+    m.verbose("< add expression");
+    return result;
+  }
+}
+
+ASTExpression mulExpression() :
+{
+  ASTExpression result = null;
+  ASTExpression e = null;
+  Token t;
+}
+{
+  {
+    m.verbose("> mul expression");
+    m.i();
+  }
+  result = negExpression()
+  (
+    t = < MUL > e = negExpression()
+    {
+      result = new ASTMul(result, e);
+      result.setPosition(t);
+    }
+  | 
+    t = < DIV > e = negExpression()
+    {
+      result = new ASTDiv(result, e);
+      result.setPosition(t);
+    }
+  )*
+  {
+    m.d();
+    m.verbose("<  mul expression");
+    return result;
+  }
+}
+
+ASTExpression negExpression() :
+{
+  ASTExpression result = null;
+  ASTExpression e = null;
+  Token t;
+}
+{
+  {
+    m.verbose("> neg expression");
+    m.i();
+  }
+  (
+    t = < SUB > e = priExpression()
+    {
+      result = new ASTNeg(e);
+      result.setPosition(t);
+    }
+  | 
+    t = < NOT > e = priExpression()
+    {
+      result = new ASTNot(e);
+      result.setPosition(t);
+    }
+  | 
+    result = priExpression()
+  )
+  {
+    m.d();
+    m.verbose("<  neg expression");
+    return result;
+  }
+}
+
+ASTExpression priExpression() :
+{
+  ASTExpression result = null;
+  ASTCall c = null;
+  Token t = null;
+}
+{
+  {
+    m.verbose("> pri expression");
+    m.i();
+  }
+  (
+    t = < INTEGER >
+    {
+      result = new ASTIntegerConstant(Integer.parseInt(t.image));
+      result.setPosition(t);
+    }
+  | 
+    < LP > result = orExpression() < RP >
+  | 
+    t = < IDENTIFIER >
+    {
+      result = new ASTVariable(t.image);
+      result.setPosition(t);
+    }
+    (
+      < LP >
+      {
+        c = new ASTCall(t.image);
+        result = c;
+      }
+      (
+        arguments(c)
+      )?
+      < RP >
+      {
+        result.setPosition(t);
+      }
+    )?
+  )
+  {
+    m.d();
+    m.verbose("<  pri expression");
+    return result;
+  }
+}
+
+void arguments(ASTCall f) :
+{
+  ASTExpression e = null;
+}
+{
+  e = addExpression()
+  {
+    f.addParameter(e);
+  }
+  (
+    < CO > e = addExpression()
+    {
+      f.addParameter(e);
+    }
+  )*
+}
+
+ASTBreakStatement breakStatement() :
+{
+  ASTBreakStatement s = null;
+  Token t = null;
+}
+{
+  t = < BREAK > < SE >
+  {
+    s = new ASTBreakStatement();
+    s.setPosition(t);
+    return s;
+  }
+}
+
+ASTContinueStatement continueStatement() :
+{
+  ASTContinueStatement s = null;
+  Token t = null;
+}
+{
+  t = < CONTINUE > < SE >
+  {
+    s = new ASTContinueStatement();
+    s.setPosition(t);
+    return s;
+  }
+}
